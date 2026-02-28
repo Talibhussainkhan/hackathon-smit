@@ -1,25 +1,51 @@
-import React, { useState } from 'react'
-import { CalendarPlus, Search, Clock, User, Filter, X } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { CalendarPlus, Search, Clock, User, Filter, X, Loader2, CheckCircle2 } from 'lucide-react'
+import axios from 'axios'
+import toast from 'react-hot-toast'
 
 const ReceptionistAppointments = () => {
   const [filter, setFilter] = useState('All')
   const [search, setSearch] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  const [appointments, setAppointments] = useState([])
+  const [doctors, setDoctors] = useState([])
+  const [patients, setPatients] = useState([])
+  
   const [formData, setFormData] = useState({
-    patientName: '', doctorId: '', date: '', time: '', type: 'Consultation'
+    patientId: '', doctorId: '', date: new Date().toISOString().split('T')[0], time: '', reason: 'General Consultation'
   })
 
-  // Placeholder data
-  const appointments = [
-    { id: '501', patient: 'Emma Thomas', date: '2023-10-25', time: '10:15 AM', doctor: 'Dr. Sarah Smith', status: 'Upcoming', type: 'Checkup' },
-    { id: '502', patient: 'Oliver Martinez', date: '2023-10-25', time: '10:30 AM', doctor: 'Dr. John Doe', status: 'Upcoming', type: 'Consultation' },
-    { id: '503', patient: 'Sophia Anderson', date: '2023-10-25', time: '10:45 AM', doctor: 'Dr. Sarah Smith', status: 'Completed', type: 'Follow-up' },
-    { id: '504', patient: 'William Chen', date: '2023-10-26', time: '09:00 AM', doctor: 'Dr. Emily Chen', status: 'Cancelled', type: 'Lab Review' },
-  ]
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  const fetchData = async () => {
+    setIsLoading(true)
+    try {
+      const [apptsRes, docsRes, patientsRes] = await Promise.all([
+        axios.get(`${import.meta.env.VITE_BACKEND_URL}/api/receptionist/schedule`, { withCredentials: true }),
+        axios.get(`${import.meta.env.VITE_BACKEND_URL}/api/receptionist/doctors`, { withCredentials: true }),
+        axios.get(`${import.meta.env.VITE_BACKEND_URL}/api/receptionist/patients`, { withCredentials: true })
+      ])
+      setAppointments(apptsRes.data)
+      setDoctors(docsRes.data)
+      setPatients(patientsRes.data)
+    } catch (error) {
+      toast.error("Error loading appointment data")
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const filteredAppointments = appointments.filter(appt => {
-    if (filter !== 'All' && appt.status !== filter) return false
-    if (search && !(appt.patient.toLowerCase().includes(search.toLowerCase()) || appt.doctor.toLowerCase().includes(search.toLowerCase()))) return false
+    const patientName = appt.patient?.username?.toLowerCase() || ''
+    const doctorName = appt.doctor?.username?.toLowerCase() || ''
+    
+    if (filter !== 'All' && appt.status !== filter.toLowerCase()) return false
+    if (search && !(patientName.includes(search.toLowerCase()) || doctorName.includes(search.toLowerCase()))) return false
     return true
   })
 
@@ -28,12 +54,20 @@ const ReceptionistAppointments = () => {
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    console.log('Booked New Appointment:', formData)
-    // TODO: Add API call here
-    setIsModalOpen(false)
-    setFormData({ patientName: '', doctorId: '', date: '', time: '', type: 'Consultation' })
+    setIsSubmitting(true)
+    try {
+      await axios.post(`${import.meta.env.VITE_BACKEND_URL}/api/receptionist/book-appointment`, formData, { withCredentials: true })
+      toast.success("Appointment booked successfully")
+      setIsModalOpen(false)
+      fetchData()
+      setFormData({ patientId: '', doctorId: '', date: new Date().toISOString().split('T')[0], time: '', reason: 'General Consultation' })
+    } catch (error) {
+      toast.error(error.response?.data?.error || "Booking failed")
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -63,7 +97,7 @@ const ReceptionistAppointments = () => {
               onChange={(e) => setFilter(e.target.value)}
             >
               <option value="All">All Statuses</option>
-              <option value="Upcoming">Upcoming</option>
+              <option value="Scheduled">Upcoming</option>
               <option value="Completed">Completed</option>
               <option value="Cancelled">Cancelled</option>
             </select>
@@ -83,45 +117,52 @@ const ReceptionistAppointments = () => {
 
         {/* List View */}
         <div className="overflow-auto flex-1 p-2">
-          <div className="divide-y divide-gray-50">
-            {filteredAppointments.length > 0 ? (
-              filteredAppointments.map((appt) => (
-                <div key={appt.id} className="p-5 flex flex-col md:flex-row items-start md:items-center justify-between hover:bg-rose-50/30 transition-colors border border-transparent hover:border-rose-100 rounded-xl m-2">
-                  <div className="flex items-start space-x-4">
-                    <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex flex-col items-center justify-center border border-rose-100 flex-shrink-0">
-                      <span className="text-xs font-bold leading-none">{appt.date.split('-')[1]}</span>
-                      <span className="text-lg font-extrabold leading-none mt-0.5">{appt.date.split('-')[2]}</span>
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-900">{appt.patient}</h3>
-                      <div className="flex items-center text-sm font-medium text-gray-500 mt-1 space-x-3">
-                        <span className="flex items-center text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md"><User className="w-3.5 h-3.5 mr-1" /> {appt.doctor}</span>
-                        <span className="flex items-center"><Clock className="w-3.5 h-3.5 mr-1 text-gray-400" /> {appt.time}</span>
+           {isLoading ? (
+             <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                <Loader2 className="w-8 h-8 animate-spin mb-2" />
+                <p>Loading schedule...</p>
+             </div>
+           ) : (
+            <div className="divide-y divide-gray-50">
+              {filteredAppointments.length > 0 ? (
+                filteredAppointments.map((appt) => (
+                  <div key={appt._id} className="p-5 flex flex-col md:flex-row items-start md:items-center justify-between hover:bg-rose-50/30 transition-colors border border-transparent hover:border-rose-100 rounded-xl m-2">
+                    <div className="flex items-start space-x-4">
+                      <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex flex-col items-center justify-center border border-rose-100 flex-shrink-0">
+                        <span className="text-xs font-bold leading-none">{appt.date?.split('-')[1]}</span>
+                        <span className="text-lg font-extrabold leading-none mt-0.5">{appt.date?.split('-')[2]}</span>
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-900">{appt.patient?.username}</h3>
+                        <div className="flex items-center text-sm font-medium text-gray-500 mt-1 space-x-3">
+                          <span className="flex items-center text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md"><User className="w-3.5 h-3.5 mr-1" /> {appt.doctor?.username}</span>
+                          <span className="flex items-center"><Clock className="w-3.5 h-3.5 mr-1 text-gray-400" /> {appt.time}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  
-                  <div className="mt-4 md:mt-0 flex items-center space-x-6 w-full md:w-auto justify-between md:justify-end">
-                    <div className="text-sm font-semibold text-gray-600">
-                      {appt.type}
+                    
+                    <div className="mt-4 md:mt-0 flex items-center space-x-6 w-full md:w-auto justify-between md:justify-end">
+                      <div className="text-sm font-semibold text-gray-600">
+                        {appt.reason}
+                      </div>
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold border tracking-wide uppercase ${
+                        appt.status === 'completed' ? 'bg-green-50 text-green-700 border-green-200' : 
+                        appt.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200' :
+                        'bg-blue-50 text-blue-700 border-blue-200'
+                      }`}>
+                        {appt.status}
+                      </span>
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-bold border tracking-wide uppercase ${
-                      appt.status === 'Completed' ? 'bg-green-50 text-green-700 border-green-200' : 
-                      appt.status === 'Cancelled' ? 'bg-red-50 text-red-700 border-red-200' :
-                      'bg-blue-50 text-blue-700 border-blue-200'
-                    }`}>
-                      {appt.status}
-                    </span>
                   </div>
+                ))
+              ) : (
+                <div className="p-12 text-center flex flex-col items-center justify-center h-full text-gray-400">
+                  <CalendarPlus className="w-12 h-12 mb-3 text-gray-300" />
+                  <p className="font-medium">No appointments found matching your criteria.</p>
                 </div>
-              ))
-            ) : (
-              <div className="p-12 text-center flex flex-col items-center justify-center h-full text-gray-400">
-                <CalendarPlus className="w-12 h-12 mb-3 text-gray-300" />
-                <p className="font-medium">No appointments found matching your criteria.</p>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+           )}
         </div>
       </div>
 
@@ -148,17 +189,22 @@ const ReceptionistAppointments = () => {
               <form id="book-appt-form" onSubmit={handleSubmit} className="space-y-5">
                 
                 <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-gray-700">Patient Name <span className="text-red-500">*</span></label>
-                  <input type="text" name="patientName" required value={formData.patientName} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rose-400 focus:bg-white outline-none transition-all" placeholder="Patient's Full Name" />
+                  <label className="text-sm font-bold text-gray-700">Select Patient <span className="text-red-500">*</span></label>
+                  <select name="patientId" required value={formData.patientId} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rose-400 focus:bg-white outline-none transition-all text-gray-600">
+                    <option value="">Choose a patient...</option>
+                    {patients.map(p => (
+                      <option key={p._id} value={p._id}>{p.username}</option>
+                    ))}
+                  </select>
                 </div>
                 
                 <div className="space-y-1.5">
                   <label className="text-sm font-bold text-gray-700">Select Doctor <span className="text-red-500">*</span></label>
                   <select name="doctorId" required value={formData.doctorId} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rose-400 focus:bg-white outline-none transition-all text-gray-600">
                     <option value="">Choose a doctor...</option>
-                    <option value="1">Dr. Sarah Smith (Cardiology)</option>
-                    <option value="2">Dr. John Doe (Pediatrics)</option>
-                    <option value="3">Dr. Emily Chen (Dermatology)</option>
+                    {doctors.map(d => (
+                      <option key={d._id} value={d._id}>{d.username}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -174,11 +220,11 @@ const ReceptionistAppointments = () => {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-sm font-bold text-gray-700">Appointment Type</label>
-                  <select name="type" value={formData.type} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rose-400 focus:bg-white outline-none transition-all text-gray-600">
-                    <option value="Consultation">Consultation</option>
-                    <option value="Follow-up">Follow-up</option>
-                    <option value="Checkup">Checkup</option>
+                  <label className="text-sm font-bold text-gray-700">Reason / Type</label>
+                  <select name="reason" value={formData.reason} onChange={handleInputChange} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-rose-400 focus:bg-white outline-none transition-all text-gray-600">
+                    <option value="General Consultation">General Consultation</option>
+                    <option value="Follow-up Visit">Follow-up Visit</option>
+                    <option value="Annual Checkup">Annual Checkup</option>
                     <option value="Lab Review">Lab Review</option>
                   </select>
                 </div>
@@ -197,9 +243,17 @@ const ReceptionistAppointments = () => {
               <button 
                 type="submit" 
                 form="book-appt-form"
-                className="px-6 py-3 bg-gradient-to-r from-rose-500 to-pink-600 text-white font-bold hover:from-rose-600 hover:to-pink-700 rounded-xl shadow-md transition-all flex items-center tracking-wide"
+                disabled={isSubmitting}
+                className="px-6 py-3 bg-gradient-to-r from-rose-500 to-pink-600 text-white font-bold hover:from-rose-600 hover:to-pink-700 rounded-xl shadow-md transition-all flex items-center tracking-wide disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Book Now
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Booking...
+                  </>
+                ) : (
+                  'Book Now'
+                )}
               </button>
             </div>
           </div>

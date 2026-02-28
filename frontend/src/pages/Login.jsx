@@ -11,6 +11,18 @@ const Login = () => {
   const dispatch = useDispatch()
   const backendUrl = import.meta.env.VITE_BACKEND_URL
 
+  const demoCredentials = [
+    { role: 'Admin', email: 'admin@gmail.com', password: '123456' },
+    { role: 'Doctor', email: 'owais@dr.com', password: '123456' },
+    { role: 'Receptionist', email: 'john@gmail.com', password: '123456' },
+    { role: 'Patient', email: 'asad@patient.com', password: '123456' },
+  ]
+
+  const handleDemoClick = (email, password) => {
+    formik.setFieldValue('email', email)
+    formik.setFieldValue('password', password)
+  }
+
   const formik = useFormik({
     initialValues: {
       email: '',
@@ -49,7 +61,7 @@ const Login = () => {
   })
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center px-4 py-10">
       <form
         onSubmit={formik.handleSubmit}
         className="bg-white text-gray-500 w-full max-w-[350px] mx-4 md:p-6 p-4 text-left text-sm rounded-xl shadow-[0px_0px_10px_0px] shadow-black/10"
@@ -106,12 +118,31 @@ const Login = () => {
             'Log in'
           )}
         </button>
-
-        <p className="text-center mt-4">
-          Don't have an account?{' '}
-          <Link to="/signup" className="text-blue-500 underline">Signup Now</Link>
-        </p>
       </form>
+
+      <div className="mt-8 w-full max-w-[400px]">
+        <h3 className="text-center text-gray-600 font-medium mb-4">Demo Credentials (Tap to Fill)</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {demoCredentials.map((demo, index) => (
+            <div
+              key={index}
+              onClick={() => handleDemoClick(demo.email, demo.password)}
+              className="bg-white/70 backdrop-blur-md border border-white/50 p-3 rounded-xl cursor-pointer hover:bg-white hover:shadow-md transition-all active:scale-95 group"
+            >
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-[10px] uppercase tracking-wider font-bold text-indigo-500">
+                  {demo.role}
+                </span>
+                <span className="opacity-0 group-hover:opacity-100 transition-opacity text-indigo-400 text-[10px]">
+                  Fill →
+                </span>
+              </div>
+              <p className="text-gray-700 font-medium text-xs truncate">{demo.email}</p>
+              <p className="text-gray-400 text-[10px]">Password: {demo.password}</p>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

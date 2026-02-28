@@ -1,20 +1,43 @@
-import React, { useState } from 'react'
-import { Calendar as CalendarIcon, Clock, Stethoscope, CheckCircle2, XCircle, ChevronRight } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Calendar as CalendarIcon, Clock, Stethoscope, ChevronRight, Loader2, CalendarX2 } from 'lucide-react'
+import axios from 'axios'
+import toast from 'react-hot-toast'
 
 const PatientAppointments = () => {
   const [filter, setFilter] = useState('All')
+  const [appointments, setAppointments] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
 
-  const appointments = [
-    { id: 1, doctor: 'Dr. Sarah Smith', specialization: 'Cardiology', date: '2023-11-15', time: '09:00 AM', status: 'Upcoming', type: 'Routine Checkup' },
-    { id: 2, doctor: 'Dr. John Doe', specialization: 'Internal Medicine', date: '2023-09-02', time: '11:30 AM', status: 'Completed', type: 'Annual Physical' },
-    { id: 3, doctor: 'Dr. Emily Chen', specialization: 'Dermatology', date: '2023-06-18', time: '02:15 PM', status: 'Completed', type: 'Consultation' },
-    { id: 4, doctor: 'Dr. Sarah Smith', specialization: 'Cardiology', date: '2023-01-10', time: '10:00 AM', status: 'Cancelled', type: 'Follow-up' },
-  ]
+  useEffect(() => {
+    fetchAppointments()
+  }, [])
+
+  const fetchAppointments = async () => {
+    try {
+      const { data } = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/api/patient/my-appointments`, { withCredentials: true })
+      setAppointments(data)
+    } catch (error) {
+      toast.error("Failed to load appointment history")
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const filteredAppointments = appointments.filter(appt => {
-    if (filter !== 'All' && appt.status !== filter) return false
+    if (filter === 'All') return true
+    if (filter === 'Upcoming') return appt.status === 'scheduled'
+    if (filter === 'Completed') return appt.status === 'completed'
+    if (filter === 'Cancelled') return appt.status === 'cancelled'
     return true
   })
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="w-12 h-12 animate-spin text-emerald-600" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6 h-full flex flex-col">
@@ -48,11 +71,11 @@ const PatientAppointments = () => {
           <div className="relative border-l-2 border-emerald-100 ml-3 space-y-8">
             {filteredAppointments.length > 0 ? (
               filteredAppointments.map((appt) => (
-                <div key={appt.id} className="relative pl-8">
+                <div key={appt._id} className="relative pl-8">
                   {/* Timeline Dot */}
                   <div className={`absolute -left-[9px] top-6 w-4 h-4 rounded-full border-4 border-white shadow-sm ${
-                    appt.status === 'Upcoming' ? 'bg-blue-500' : 
-                    appt.status === 'Completed' ? 'bg-emerald-500' : 'bg-red-400'
+                    appt.status === 'scheduled' ? 'bg-blue-500' : 
+                    appt.status === 'completed' ? 'bg-emerald-500' : 'bg-red-400'
                   }`}></div>
                   
                   {/* Card Main content */}
@@ -61,8 +84,10 @@ const PatientAppointments = () => {
                       
                       {/* Left: Date/Time */}
                       <div className="flex flex-col bg-gray-50 p-3 rounded-xl min-w-[120px] text-center border border-gray-100 group-hover:bg-white group-hover:border-emerald-100 transition-colors">
-                        <span className="text-sm font-bold text-emerald-600 uppercase tracking-widest">{appt.date.split('-')[1]} • {appt.date.split('-')[0]}</span>
-                        <span className="text-3xl font-extrabold text-gray-800 my-1">{appt.date.split('-')[2]}</span>
+                        <span className="text-sm font-bold text-emerald-600 uppercase tracking-widest">
+                           {new Date(appt.date).toLocaleString('default', { month: 'short' })} • {new Date(appt.date).getFullYear()}
+                        </span>
+                        <span className="text-3xl font-extrabold text-gray-800 my-1">{new Date(appt.date).getDate()}</span>
                         <span className="text-xs font-semibold text-gray-500 flex items-center justify-center">
                           <Clock className="w-3 h-3 mr-1" /> {appt.time}
                         </span>
@@ -72,38 +97,33 @@ const PatientAppointments = () => {
                       <div className="flex-1">
                         <div className="flex items-center space-x-2 mb-1">
                           <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${
-                            appt.status === 'Upcoming' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
-                            appt.status === 'Completed' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
+                            appt.status === 'scheduled' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
+                            appt.status === 'completed' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
                             'bg-red-100 text-red-700 border border-red-200'
                           }`}>
                             {appt.status}
                           </span>
-                          <span className="text-sm font-semibold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-md border border-gray-200">{appt.type}</span>
+                          <span className="text-sm font-semibold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-md border border-gray-200">{appt.reason}</span>
                         </div>
-                        <h3 className="text-xl font-bold text-gray-900 group-hover:text-emerald-700 transition-colors">{appt.doctor}</h3>
+                        <h3 className="text-xl font-bold text-gray-900 group-hover:text-emerald-700 transition-colors">Dr. {appt.doctor?.username}</h3>
                         <p className="text-sm font-medium text-gray-500 flex items-center mt-1">
                           <Stethoscope className="w-4 h-4 mr-1.5 text-gray-400" />
-                          {appt.specialization}
+                          Consultation Visit
                         </p>
                       </div>
 
                       {/* Right: Actions */}
                       <div className="flex items-center justify-end w-full md:w-auto mt-4 md:mt-0 pt-4 md:pt-0 border-t border-gray-100 md:border-0 pl-0 md:pl-6">
-                        {appt.status === 'Upcoming' ? (
-                          <div className="flex space-x-2 w-full">
-                            <button className="flex-1 md:flex-none px-4 py-2 border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl font-bold text-sm transition-colors flex justify-center items-center">
-                              <XCircle className="w-4 h-4 mr-1" /> Cancel
-                            </button>
-                            <button className="flex-1 md:flex-none px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shadow-emerald-200 rounded-xl font-bold text-sm transition-colors flex justify-center items-center">
-                              Reschedule
-                            </button>
-                          </div>
-                        ) : appt.status === 'Completed' ? (
-                          <button className="w-full md:w-auto px-4 py-2 bg-gray-50 border border-gray-200 text-gray-700 hover:bg-gray-100 hover:border-gray-300 rounded-xl font-bold text-sm transition-colors flex justify-center items-center group-hover:bg-white group-hover:text-emerald-700">
-                             View Details <ChevronRight className="w-4 h-4 ml-1" />
-                          </button>
-                        ) : (
-                          <span className="text-sm font-bold text-gray-400 italic">No actions available</span>
+                        {appt.status === 'completed' && (
+                           <div className="text-emerald-600 font-bold text-xs flex items-center bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">
+                             Checked Out <ChevronRight className="w-4 h-4 ml-1" />
+                           </div>
+                        )}
+                        {appt.status === 'scheduled' && (
+                           <span className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">Confirmed Booking</span>
+                        )}
+                        {appt.status === 'cancelled' && (
+                           <span className="text-xs font-bold text-red-400">Booking Revoked</span>
                         )}
                       </div>
 
@@ -114,7 +134,7 @@ const PatientAppointments = () => {
             ) : (
               <div className="pl-8 py-10">
                 <div className="bg-gray-50 border border-dashed border-gray-200 rounded-2xl p-10 text-center text-gray-500">
-                  <CalendarIcon className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <CalendarX2 className="w-12 h-12 mx-auto mb-4 text-gray-300" />
                   <p className="font-bold text-lg text-gray-600">No appointments found</p>
                   <p className="text-sm mt-1">Try adjusting your filters to see more results.</p>
                 </div>

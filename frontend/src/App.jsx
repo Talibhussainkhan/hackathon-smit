@@ -7,7 +7,6 @@ import RoleRedirect from './components/RoleRedirect'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 
-
 import AdminLayout from './components/AdminLayout'
 import AdminOverview from './pages/admin/AdminOverview'
 import AdminDoctors from './pages/admin/AdminDoctors'
@@ -19,6 +18,8 @@ import DoctorLayout from './components/doctor/DoctorLayout'
 import DoctorOverview from './pages/doctor/DoctorOverview'
 import DoctorAppointments from './pages/doctor/DoctorAppointments'
 import DoctorConsultation from './pages/doctor/DoctorConsultation'
+import DoctorAnalytics from './pages/doctor/DoctorAnalytics'
+import DoctorPatients from './pages/doctor/DoctorPatients'
 
 // Receptionist Views
 import ReceptionistLayout from './components/receptionist/ReceptionistLayout'
@@ -55,14 +56,6 @@ const App = () => {
             </PublicRoute>
           }
         />
-        <Route
-          path="/signup"
-          element={
-            <PublicRoute>
-              <Signup />
-            </PublicRoute>
-          }
-        />
 
         {/* Admin Routes */}
         <Route
@@ -92,7 +85,10 @@ const App = () => {
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<DoctorOverview />} />
           <Route path="appointments" element={<DoctorAppointments />} />
-          <Route path="consultation" element={<DoctorConsultation />} />
+          <Route path="patients" element={<DoctorPatients />} />
+          <Route path="analytics" element={<DoctorAnalytics />} />
+          <Route path="consultation" element={<Navigate to="/doctor/appointments" replace />} />
+          <Route path="consultation/:appointmentId" element={<DoctorConsultation />} />
         </Route>
 
         {/* Receptionist Routes */}

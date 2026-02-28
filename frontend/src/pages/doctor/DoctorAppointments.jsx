@@ -1,20 +1,35 @@
-import React, { useState } from 'react'
-import { Calendar as CalendarIcon, Clock, User, Filter, Search, FileText } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Calendar as CalendarIcon, Clock, User, Filter, Search, FileText, Loader2, Play } from 'lucide-react'
+import axios from 'axios'
+import toast from 'react-hot-toast'
+import { Link } from 'react-router-dom'
 
 const DoctorAppointments = () => {
   const [filter, setFilter] = useState('All')
   const [search, setSearch] = useState('')
+  const [appointments, setAppointments] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
 
-  const appointments = [
-    { id: 101, patient: 'Michael Brown', age: 45, date: '2023-10-25', time: '09:00 AM', status: 'Completed', type: 'Checkup' },
-    { id: 102, patient: 'Sarah Davis', age: 28, date: '2023-10-26', time: '09:30 AM', status: 'Upcoming', type: 'Follow-up' },
-    { id: 103, patient: 'James Wilson', age: 62, date: '2023-10-26', time: '10:00 AM', status: 'Upcoming', type: 'Consultation' },
-    { id: 104, patient: 'Emma Thomas', age: 34, date: '2023-10-25', time: '11:15 AM', status: 'Completed', type: 'Lab Review' },
-  ]
+  useEffect(() => {
+    fetchAppointments()
+  }, [])
+
+  const fetchAppointments = async () => {
+    setIsLoading(true)
+    try {
+      const { data } = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/api/doctor/appointments`, { withCredentials: true })
+      setAppointments(data)
+    } catch (error) {
+      toast.error("Error fetching appointments")
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const filteredAppointments = appointments.filter(appt => {
-    if (filter !== 'All' && appt.status !== filter) return false
-    if (search && !appt.patient.toLowerCase().includes(search.toLowerCase())) return false
+    const patientName = appt.patient?.username?.toLowerCase() || ''
+    if (filter !== 'All' && appt.status !== filter.toLowerCase()) return false
+    if (search && !patientName.includes(search.toLowerCase())) return false
     return true
   })
 
@@ -38,8 +53,9 @@ const DoctorAppointments = () => {
               onChange={(e) => setFilter(e.target.value)}
             >
               <option value="All">All Appointments</option>
-              <option value="Upcoming">Upcoming</option>
+              <option value="Scheduled">Upcoming</option>
               <option value="Completed">Completed</option>
+              <option value="Cancelled">Cancelled</option>
             </select>
           </div>
           
@@ -56,18 +72,23 @@ const DoctorAppointments = () => {
         </div>
 
         {/* List View */}
-        <div className="divide-y divide-gray-50">
-          {filteredAppointments.length > 0 ? (
+        <div className="divide-y divide-gray-50 min-h-[400px]">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center p-20 text-gray-400">
+               <Loader2 className="w-10 h-10 animate-spin mb-2" />
+               <p>Fetching schedule...</p>
+            </div>
+          ) : filteredAppointments.length > 0 ? (
             filteredAppointments.map((appt) => (
-              <div key={appt.id} className="p-5 flex flex-col md:flex-row items-start md:items-center justify-between hover:bg-gray-50 transition-colors">
+              <div key={appt._id} className="p-5 flex flex-col md:flex-row items-start md:items-center justify-between hover:bg-gray-50 transition-colors">
                 <div className="flex items-start space-x-4">
                   <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-lg flex-shrink-0">
-                    {appt.patient.charAt(0)}
+                    {appt.patient?.username?.charAt(0)}
                   </div>
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">{appt.patient}</h3>
+                    <h3 className="text-lg font-semibold text-gray-900">{appt.patient?.username}</h3>
                     <div className="flex items-center text-sm text-gray-500 mt-1 space-x-4">
-                      <span className="flex items-center"><User className="w-4 h-4 mr-1" /> Age: {appt.age}</span>
+                      <span className="flex items-center"><User className="w-4 h-4 mr-1" /> Age: {appt.patient?.age || 'N/A'}</span>
                       <span className="flex items-center"><CalendarIcon className="w-4 h-4 mr-1" /> {appt.date}</span>
                       <span className="flex items-center"><Clock className="w-4 h-4 mr-1" /> {appt.time}</span>
                     </div>
@@ -76,23 +97,37 @@ const DoctorAppointments = () => {
                 
                 <div className="mt-4 md:mt-0 flex items-center space-x-6 w-full md:w-auto justify-between md:justify-end">
                   <div className="text-sm font-medium text-gray-600">
-                    {appt.type}
+                    {appt.reason}
                   </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${
-                    appt.status === 'Completed' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold border tracking-wide uppercase ${
+                    appt.status === 'completed' ? 'bg-green-50 text-green-700 border-green-200' : 
+                    appt.status === 'cancelled' ? 'bg-red-50 text-red-700 border-red-200' :
+                    'bg-blue-50 text-blue-700 border-blue-200'
                   }`}>
                     {appt.status}
                   </span>
-                  <button className="flex items-center text-teal-600 hover:text-teal-800 font-medium text-sm transition-colors hover:underline">
-                    <FileText className="w-4 h-4 mr-1" />
-                    History
-                  </button>
+                  
+                  {appt.status === 'scheduled' ? (
+                     <Link 
+                      to={`/doctor/consultation/${appt._id}`}
+                      className="flex items-center bg-teal-600 text-white px-4 py-2 rounded-xl hover:bg-teal-700 font-bold text-sm transition-all shadow-sm"
+                     >
+                       <Play className="w-4 h-4 mr-2" /> Consult
+                     </Link>
+                  ) : (
+                    <button className="flex items-center text-teal-600 hover:text-teal-800 font-medium text-sm transition-colors hover:underline">
+                      <FileText className="w-4 h-4 mr-1" />
+                      View Note
+                    </button>
+                  )}
                 </div>
               </div>
             ))
           ) : (
-            <div className="p-8 text-center text-gray-500">
-              No appointments found matching your criteria.
+            <div className="p-12 text-center text-gray-500 flex flex-col items-center">
+              <Search className="w-12 h-12 text-gray-200 mb-3" />
+              <p className="font-medium text-lg">No appointments found</p>
+              <p className="text-sm">Try adjusting your filters or search terms.</p>
             </div>
           )}
         </div>

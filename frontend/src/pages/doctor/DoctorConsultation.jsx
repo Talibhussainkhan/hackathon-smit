@@ -1,213 +1,353 @@
-import React, { useState } from 'react'
-import { FilePlus, MessageSquareWarning, Send, Plus, Trash2, CheckCircle2 } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { FilePlus, MessageSquareWarning, Send, Plus, Trash2, CheckCircle2, Loader2, CalendarClock, History } from 'lucide-react'
+import axios from 'axios'
+import toast from 'react-hot-toast'
 
 const DoctorConsultation = () => {
+  const { appointmentId } = useParams()
+  const navigate = useNavigate()
+  
   const [activeTab, setActiveTab] = useState('notes')
   const [aiPanelOpen, setAiPanelOpen] = useState(false)
-  const [prescriptions, setPrescriptions] = useState([{ name: '', dosage: '', duration: '' }])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isAiLoading, setIsAiLoading] = useState(false)
+  
+  const [appointment, setAppointment] = useState(null)
+  const [patientHistory, setPatientHistory] = useState({ pastAppointments: [], prescriptions: [] })
+  
+  const [consultNotes, setConsultNotes] = useState({ subjective: '', objective: '', diagnosis: '' })
+  const [medications, setMedications] = useState([{ name: '', dosage: '', duration: '', instructions: '' }])
+  
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [aiExplanations, setAiExplanations] = useState([])
 
-  const addPrescriptionRow = () => {
-    setPrescriptions([...prescriptions, { name: '', dosage: '', duration: '' }])
+  useEffect(() => {
+    fetchConsultationData()
+  }, [appointmentId])
+
+  const fetchConsultationData = async () => {
+    setIsLoading(true)
+    try {
+      const appointmentsRes = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/api/doctor/appointments`, { withCredentials: true })
+      const currentAppt = appointmentsRes.data.find(a => a._id === appointmentId)
+      
+      if (!currentAppt) {
+        toast.error("Appointment not found")
+        navigate('/doctor/appointments')
+        return
+      }
+      
+      setAppointment(currentAppt)
+      
+      const historyRes = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/api/doctor/patient-history/${currentAppt.patient._id}`, { withCredentials: true })
+      setPatientHistory(historyRes.data)
+    } catch (error) {
+      toast.error("Failed to load consultation data")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const removePrescriptionRow = (index) => {
-    const updated = prescriptions.filter((_, i) => i !== index)
-    setPrescriptions(updated)
+  const handleAiAssist = async () => {
+    if (!consultNotes.diagnosis && !consultNotes.subjective && !consultNotes.objective) {
+      toast.error("Please add symptoms or a diagnosis first")
+      return
+    }
+    
+    setIsAiLoading(true)
+    setAiPanelOpen(true)
+    try {
+      const { data } = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/api/doctor/ai-assist`, 
+        { 
+          diagnosis: consultNotes.diagnosis, 
+          medications: medications.filter(m => m.name !== ''),
+          subjective: consultNotes.subjective,
+          objective: consultNotes.objective
+        },
+        { withCredentials: true }
+      )
+      setAiExplanations(prev => [...prev, { role: 'ai', text: data.explanation }])
+    } catch (error) {
+      toast.error("AI Assistance failed")
+    } finally {
+      setIsAiLoading(false)
+    }
   }
+
+  const handleSubmit = async () => {
+    if (!consultNotes.diagnosis) return toast.error("Diagnosis is required")
+    
+    setIsSubmitting(true)
+    try {
+      await axios.post(`${import.meta.env.VITE_BACKEND_URL}/api/doctor/prescription`, {
+        appointmentId,
+        patientId: appointment.patient._id,
+        diagnosis: consultNotes.diagnosis,
+        medications: medications.filter(m => m.name !== ''),
+        notes: `Subjective: ${consultNotes.subjective} | Objective: ${consultNotes.objective}`,
+        aiExplanation: aiExplanations.filter(msg => msg.role === 'ai').map(msg => msg.text).join('\n\n')
+      }, { withCredentials: true })
+      
+      toast.success("Consultation completed successfully")
+      navigate('/doctor/dashboard')
+    } catch (error) {
+      toast.error(error.response?.data?.error || "Submission failed")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const addMedRow = () => setMedications([...medications, { name: '', dosage: '', duration: '', instructions: '' }])
+  
+  const removeMedRow = (index) => setMedications(medications.filter((_, i) => i !== index))
+
+  const handleMedChange = (index, field, value) => {
+    const updated = [...medications]
+    updated[index][field] = value
+    setMedications(updated)
+  }
+
+  const handleAiChat = async (e) => {
+    if (e) e.preventDefault()
+    if (!aiPrompt.trim()) return
+    
+    const userMsg = aiPrompt
+    setAiPrompt('')
+    setAiExplanations(prev => [...prev, { role: 'user', text: userMsg }])
+    
+    setIsAiLoading(true)
+    try {
+      const { data } = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/api/doctor/ai-assist`, 
+        { diagnosis: consultNotes.diagnosis, medications, query: userMsg },
+        { withCredentials: true }
+      )
+      setAiExplanations(prev => [...prev, { role: 'ai', text: data.explanation }])
+    } catch (error) {
+      toast.error("AI response failed")
+    } finally {
+      setIsAiLoading(false)
+    }
+  }
+
+  if (isLoading) return (
+    <div className="flex flex-col items-center justify-center h-full text-teal-600">
+      <Loader2 className="w-12 h-12 animate-spin mb-4" />
+      <p className="font-bold text-lg">Initializing Clinical Session...</p>
+    </div>
+  )
 
   return (
-    <div className="flex h-full gap-6">
+    <div className="flex flex-col lg:flex-row h-full gap-6">
       {/* Main Consultation Area */}
-      <div className={`flex-1 flex flex-col transition-all duration-300 ${aiPanelOpen ? 'pr-0' : ''}`}>
+      <div className="flex-1 flex flex-col min-w-0">
         
         {/* Header */}
-        <div className="flex justify-between items-center border-b border-gray-200 pb-5 mb-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-gray-200 pb-5 mb-6 gap-4">
           <div>
             <div className="flex items-center space-x-3">
-              <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Active Consultation</h1>
-              <span className="bg-red-50 text-red-600 px-2 py-0.5 rounded-md text-xs font-bold uppercase tracking-wider border border-red-200 shadow-sm">
+              <h1 className="text-3xl font-bold text-gray-800 tracking-tight">Consultation</h1>
+              <span className="bg-red-50 text-red-600 px-2 py-0.5 rounded-md text-xs font-bold uppercase tracking-wider border border-red-200 shadow-sm animate-pulse">
                 Live
               </span>
             </div>
-            <p className="text-gray-500 mt-2 font-medium">Patient: <span className="text-gray-800">Michael Brown</span> • Age: 45 • ID: #101</p>
+            <p className="text-gray-500 mt-2 font-medium">
+              Patient: <span className="text-gray-900 font-bold">{appointment?.patient?.username}</span> • Age: {appointment?.patient?.age} • Phone: {appointment?.patient?.phone}
+            </p>
           </div>
           <button 
-            onClick={() => setAiPanelOpen(!aiPanelOpen)}
-            className={`flex items-center px-4 py-2.5 rounded-xl font-medium transition-all shadow-sm ${
-              aiPanelOpen 
-                ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border border-indigo-200' 
-                : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 shadow-indigo-200'
-            }`}
+            onClick={() => handleAiAssist()}
+            disabled={isAiLoading}
+            className="flex items-center px-5 py-3 rounded-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 shadow-lg shadow-indigo-100 transition-all disabled:opacity-50"
           >
-            <MessageSquareWarning className="w-5 h-5 mr-2" />
-            {aiPanelOpen ? 'Close AI Assistant' : 'Open AI Assistant'}
+            {isAiLoading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <MessageSquareWarning className="w-5 h-5 mr-2" />}
+            AI Assistance
           </button>
         </div>
 
         {/* Content Tabs */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex-1 flex flex-col overflow-hidden">
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 flex-1 flex flex-col overflow-hidden min-h-[500px]">
           <div className="flex border-b border-gray-100 bg-gray-50/50">
-            <button 
-              className={`px-6 py-4 font-semibold text-sm transition-colors border-b-2 ${activeTab === 'notes' ? 'text-teal-600 border-teal-600 bg-white' : 'text-gray-500 border-transparent hover:text-gray-800'}`}
-              onClick={() => setActiveTab('notes')}
-            >
-              Clinical Notes & Diagnosis
-            </button>
-            <button 
-              className={`px-6 py-4 font-semibold text-sm transition-colors border-b-2 ${activeTab === 'prescription' ? 'text-teal-600 border-teal-600 bg-white' : 'text-gray-500 border-transparent hover:text-gray-800'}`}
-              onClick={() => setActiveTab('prescription')}
-            >
-              Prescriptions (<span className="text-xs">{prescriptions.length}</span>)
-            </button>
+            {['notes', 'prescription', 'history'].map((tab) => (
+              <button 
+                key={tab}
+                className={`px-8 py-4 font-bold text-sm transition-all border-b-2 capitalize ${activeTab === tab ? 'text-teal-600 border-teal-600 bg-white' : 'text-gray-400 border-transparent hover:text-gray-600'}`}
+                onClick={() => setActiveTab(tab)}
+              >
+                {tab === 'notes' ? 'Clinical Notes' : tab}
+              </button>
+            ))}
           </div>
 
           <div className="p-6 flex-1 overflow-y-auto">
             {activeTab === 'notes' && (
-              <div className="space-y-6 h-full flex flex-col">
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">Subjective / Symptoms (Patient's Words)</label>
-                  <textarea 
-                    className="w-full p-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all resize-none h-32 text-gray-800"
-                    placeholder="E.g., Patient reports throbbing headache for 3 days..."
-                  ></textarea>
+              <div className="space-y-6 animate-in fade-in duration-300">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-gray-700 flex items-center">Subjective Symptoms</label>
+                    <textarea 
+                      value={consultNotes.subjective}
+                      onChange={(e) => setConsultNotes({...consultNotes, subjective: e.target.value})}
+                      className="w-full p-4 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-teal-500 outline-none transition-all resize-none h-40"
+                      placeholder="Symptoms reported by patient..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-gray-700">Objective Findings</label>
+                    <textarea 
+                      value={consultNotes.objective}
+                      onChange={(e) => setConsultNotes({...consultNotes, objective: e.target.value})}
+                      className="w-full p-4 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-teal-500 outline-none transition-all resize-none h-40"
+                      placeholder="Clinical observations, vital signs..."
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">Objective / Clinical Findings</label>
-                  <textarea 
-                    className="w-full p-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all resize-none h-32 text-gray-800"
-                    placeholder="E.g., BP 130/85, Temp 98.6°F, mild photophobia observed..."
-                  ></textarea>
-                </div>
-                <div className="flex-1">
-                  <label className="block text-sm font-bold text-gray-700 mb-2 text-red-600">Final Assessment / Diagnosis *</label>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-red-600 flex items-center">Final Diagnosis <span className="text-red-300 ml-1">*</span></label>
                   <input 
                     type="text" 
-                    className="w-full p-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all text-gray-900 font-medium shadow-sm"
-                    placeholder="Enter ICD-10 or descriptive diagnosis (e.g. Migraine without aura)"
+                    value={consultNotes.diagnosis}
+                    onChange={(e) => setConsultNotes({...consultNotes, diagnosis: e.target.value})}
+                    className="w-full p-4 border-2 border-red-50 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-all text-gray-900 font-bold bg-red-50/10 shadow-sm"
+                    placeholder="E.g., Acute Pharyngitis"
                   />
                 </div>
               </div>
             )}
 
             {activeTab === 'prescription' && (
-              <div className="space-y-6 h-full flex flex-col">
-                <div className="flex justify-between items-center bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                  <h3 className="font-semibold text-blue-900">Medications</h3>
-                  <button 
-                    onClick={addPrescriptionRow}
-                    className="flex items-center text-sm font-bold text-blue-700 hover:text-blue-800 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-blue-200 transition-colors"
-                  >
-                    <Plus className="w-4 h-4 mr-1" /> Add Medicine
-                  </button>
+              <div className="space-y-6 animate-in fade-in duration-300">
+                <div className="flex justify-between items-center bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
+                   <h3 className="font-bold text-blue-900 flex items-center"><FilePlus className="w-5 h-5 mr-2" /> Medical Prescription</h3>
+                   <button onClick={addMedRow} className="bg-white px-4 py-2 rounded-xl text-xs font-extra-bold text-blue-700 shadow-sm border border-blue-200 hover:bg-blue-50 transition-all flex items-center">
+                     <Plus className="w-4 h-4 mr-1" /> Add Medicine
+                   </button>
                 </div>
                 
-                <div className="space-y-3 flex-1 overflow-y-auto pr-2">
-                  {prescriptions.map((px, index) => (
-                    <div key={index} className="flex flex-col md:flex-row gap-4 items-start md:items-center bg-gray-50 p-4 rounded-xl border border-gray-100">
-                      <div className="flex-1 w-full">
-                        <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Medicine Name</label>
-                        <input type="text" placeholder="e.g. Amoxicillin 500mg" className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none" />
+                <div className="space-y-4">
+                  {medications.map((med, idx) => (
+                    <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-4 p-5 bg-gray-50/80 rounded-2xl border border-gray-100 relative group hover:bg-white hover:shadow-md transition-all">
+                      <div className="md:col-span-5">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Medicine Name</label>
+                        <input value={med.name} onChange={(e) => handleMedChange(idx, 'name', e.target.value)} type="text" className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 text-sm font-medium" placeholder="Paracetamol 500mg" />
                       </div>
-                      <div className="w-full md:w-48">
-                        <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Dosage / Freq</label>
-                        <input type="text" placeholder="1 tablet 3x daily" className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none" />
+                      <div className="md:col-span-3">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Dosage</label>
+                        <input value={med.dosage} onChange={(e) => handleMedChange(idx, 'dosage', e.target.value)} type="text" className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 text-sm font-medium" placeholder="1-1-1" />
                       </div>
-                      <div className="w-full md:w-32">
-                        <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Duration</label>
-                        <input type="text" placeholder="7 days" className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none" />
+                      <div className="md:col-span-3">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Duration</label>
+                        <input value={med.duration} onChange={(e) => handleMedChange(idx, 'duration', e.target.value)} type="text" className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 text-sm font-medium" placeholder="5 Days" />
                       </div>
-                      <button 
-                        onClick={() => removePrescriptionRow(index)}
-                        className="mt-6 p-2.5 text-red-500 hover:bg-red-100 hover:text-red-700 rounded-lg transition-colors flex-shrink-0"
-                        title="Remove"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
+                      <div className="md:col-span-1 flex items-end justify-center">
+                        <button onClick={() => removeMedRow(idx)} className="p-3 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all">
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
                     </div>
                   ))}
-                  {prescriptions.length === 0 && (
-                    <div className="text-center py-10 text-gray-400 font-medium">
-                      No prescriptions added yet. Let's write one!
-                    </div>
-                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'history' && (
+              <div className="space-y-8 animate-in fade-in duration-300">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-4">
+                    <h4 className="flex items-center font-bold text-gray-700 text-sm"><CalendarClock className="w-4 h-4 mr-2" /> Last Visited</h4>
+                    {patientHistory.pastAppointments.filter(a => a._id !== appointmentId).slice(0, 5).map(appt => (
+                      <div key={appt._id} className="p-4 border border-gray-100 rounded-2xl bg-gray-50/50 text-sm">
+                         <div className="flex justify-between items-start mb-2">
+                           <span className="font-bold text-gray-900">{appt.date}</span>
+                           <span className="text-xs uppercase bg-white px-2 py-0.5 rounded border text-gray-400">{appt.status}</span>
+                         </div>
+                         <p className="text-gray-500 italic">{appt.reason}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="space-y-4">
+                     <h4 className="flex items-center font-bold text-gray-700 text-sm"><History className="w-4 h-4 mr-2" /> Past Prescriptions</h4>
+                     {patientHistory.prescriptions.map(px => (
+                        <div key={px._id} className="p-4 border border-orange-100 rounded-2xl bg-orange-50/30 text-sm">
+                           <p className="font-bold text-orange-900 mb-2">{px.diagnosis}</p>
+                           <div className="flex flex-wrap gap-2">
+                             {px.medications.map((m, i) => (
+                               <span key={i} className="bg-white px-2 py-1 rounded text-[10px] font-bold text-gray-600 border border-orange-100">{m.name}</span>
+                             ))}
+                           </div>
+                           <p className="text-[10px] text-gray-400 mt-2">By Dr. {px.doctor?.username} on {new Date(px.createdAt).toLocaleDateString()}</p>
+                        </div>
+                     ))}
+                  </div>
                 </div>
               </div>
             )}
           </div>
 
-          <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end space-x-3">
-            <button className="px-6 py-2.5 text-gray-600 font-semibold hover:bg-gray-200 rounded-xl transition-colors">
-              Save Draft
-            </button>
-            <button className="px-6 py-2.5 bg-teal-600 text-white font-semibold hover:bg-teal-700 rounded-xl shadow-sm transition-colors flex items-center">
-              <CheckCircle2 className="w-5 h-5 mr-2" />
-              Sign & Complete Consultation
+          <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end space-x-3">
+            <button disabled={isSubmitting} className="px-8 py-3 bg-teal-600 text-white font-bold hover:bg-teal-700 rounded-2xl shadow-lg shadow-teal-100 transition-all flex items-center disabled:opacity-50" onClick={handleSubmit}>
+              {isSubmitting ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <CheckCircle2 className="w-5 h-5 mr-2" />}
+              Complete & Sign Consultation
             </button>
           </div>
         </div>
       </div>
 
-      {/* AI Assistant Sidebar Panel */}
-      {aiPanelOpen && (
-        <div className="w-[380px] bg-white rounded-2xl shadow-lg border border-indigo-100 flex flex-col overflow-hidden mt-20 transition-all transform origin-right animate-in slide-in-from-right-4 duration-300 relative z-10 h-[calc(100vh-140px)]">
-          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-4 border-b border-indigo-200 text-white shadow-md">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <MessageSquareWarning className="w-5 h-5" />
-                <h3 className="font-bold text-lg tracking-wide">Medi-AI Assistant</h3>
+      {/* AI Assistant Drawer */}
+      {(aiPanelOpen || isAiLoading) && (
+        <div className="w-full lg:w-96 bg-white rounded-3xl shadow-2xl border border-indigo-100 flex flex-col overflow-hidden h-[calc(100vh-140px)] animate-in slide-in-from-right-4 duration-500 shrink-0">
+           <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-5 text-white flex justify-between items-center shrink-0">
+             <div className="flex items-center space-x-3">
+               <MessageSquareWarning className="w-6 h-6" />
+               <h3 className="font-bold text-lg">AI Clinical Guide</h3>
+             </div>
+             <button onClick={() => setAiPanelOpen(false)} className="bg-white/20 p-1 rounded-lg hover:bg-white/30"><Plus className="w-5 h-5 rotate-45" /></button>
+           </div>
+           
+           <div className="flex-1 p-5 overflow-y-auto space-y-6 bg-gray-50/50">
+              {aiExplanations.map((msg, i) => (
+                <div key={i} className={`flex space-x-3 ${msg.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white font-bold text-[10px] ${msg.role === 'user' ? 'bg-teal-600' : 'bg-indigo-600'}`}>
+                    {msg.role === 'user' ? 'DR' : 'AI'}
+                  </div>
+                  <div className={`p-4 rounded-2xl border shadow-sm text-sm leading-relaxed font-medium ${
+                    msg.role === 'user' 
+                      ? 'bg-teal-50 border-teal-100 text-teal-900 rounded-tr-none' 
+                      : 'bg-white border-indigo-50 text-gray-800 rounded-tl-none'
+                  }`}>
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
+              {isAiLoading && (
+                <div className="flex space-x-3 animate-in fade-in slide-in-from-bottom-2">
+                  <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center shrink-0"><Loader2 className="w-4 h-4 text-white animate-spin" /></div>
+                  <div className="bg-white p-4 rounded-2xl rounded-tl-none border border-indigo-50 shadow-sm text-xs text-gray-400 italic">Analyzing medical context...</div>
+                </div>
+              )}
+              {aiExplanations.length === 0 && !isAiLoading && (
+                <div className="h-full flex flex-col items-center justify-center text-center p-10 space-y-4">
+                  <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-400"><MessageSquareWarning className="w-8 h-8" /></div>
+                  <p className="text-gray-400 text-sm font-medium">Add diagnosis and symptoms to get AI-powered treatment insights.</p>
+                </div>
+              )}
+           </div>
+           
+           <form onSubmit={handleAiChat} className="p-4 bg-white border-t border-gray-100">
+              <div className="relative">
+                <input 
+                  value={aiPrompt} 
+                  onChange={(e) => setAiPrompt(e.target.value)} 
+                  type="text" 
+                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none pr-12" 
+                  placeholder="Ask follow-up questions..." 
+                />
+                <button type="submit" className="absolute right-2 top-2 p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors">
+                  <Send className="w-4 h-4" />
+                </button>
               </div>
-              <span className="flex h-3 w-3 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-300 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-200 border-2 border-white"></span>
-              </span>
-            </div>
-            <p className="text-indigo-100 text-xs mt-1 font-medium">Context: Clinical Decision Support</p>
-          </div>
-          
-          <div className="flex-1 p-4 overflow-y-auto bg-gray-50/50 space-y-4">
-            {/* Initial AI Message */}
-            <div className="flex space-x-3">
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center shadow-sm">
-                <FilePlus className="w-4 h-4 text-white" />
-              </div>
-              <div className="bg-white p-3.5 rounded-2xl rounded-tl-none shadow-sm border border-gray-100 text-sm text-gray-700 leading-relaxed font-medium">
-                Hello Dr. Smith. I'm reviewing Michael Brown's history. I noticed a past allergy to <span className="text-red-600 font-bold bg-red-50 px-1 rounded">Penicillin</span>. 
-                <br/><br/>
-                How can I assist with this consultation? I can suggest differential diagnoses or check drug interactions.
-              </div>
-            </div>
-
-            {/* Simulated User Message */}
-            <div className="flex space-x-3 justify-end mt-4">
-              <div className="bg-indigo-600 p-3.5 rounded-2xl rounded-tr-none shadow-sm text-sm text-white leading-relaxed font-medium">
-                Patient has a severe headache, what are safe alternatives to NSAIDs given his history?
-              </div>
-            </div>
-
-            {/* AI Response Text Skeleton */}
-            <div className="flex space-x-3">
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center shadow-sm">
-                <FilePlus className="w-4 h-4 text-white animate-pulse" />
-              </div>
-              <div className="bg-white p-3.5 rounded-2xl rounded-tl-none shadow-sm border border-gray-100 text-sm text-gray-500 italic">
-                AI is typing...
-              </div>
-            </div>
-          </div>
-
-          <div className="p-4 bg-white border-t border-gray-100">
-            <div className="relative flex items-center">
-              <input 
-                type="text" 
-                placeholder="Ask about symptoms, drugs..." 
-                className="w-full pl-4 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm transition-all"
-              />
-              <button className="absolute right-2 p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm">
-                <Send className="w-4 h-4" />
-              </button>
-            </div>
-            <p className="text-[10px] text-center text-gray-400 mt-2">AI suggestions should be verified clinically.</p>
-          </div>
+           </form>
         </div>
       )}
     </div>

@@ -8,7 +8,9 @@ const userSchema = new mongoose.Schema({
         type: String,
         enum: ['admin', 'doctor', 'receptionist', 'patient'],
         default: 'patient'
-    }
+    },
+    phone: { type: String },
+    age: { type: Number },
 }, { timestamps: true });
 
 const User = mongoose.model('User', userSchema);

@@ -11,6 +11,17 @@ export const getDoctors = async (req, res) => {
     }
 };
 
+// Get single doctor by ID
+export const getDoctorById = async (req, res) => {
+    try {
+        const doctor = await User.findOne({ _id: req.params.id, role: 'doctor' }).select('-password');
+        if (!doctor) return res.status(404).json({ error: "Doctor not found" });
+        res.status(200).json(doctor);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
 // Add a new doctor
 export const addDoctor = async (req, res) => {
     try {
@@ -68,6 +79,17 @@ export const getReceptionists = async (req, res) => {
     try {
         const receptionists = await User.find({ role: 'receptionist' }).select('-password');
         res.status(200).json(receptionists);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// Get single receptionist by ID
+export const getReceptionistById = async (req, res) => {
+    try {
+        const receptionist = await User.findOne({ _id: req.params.id, role: 'receptionist' }).select('-password');
+        if (!receptionist) return res.status(404).json({ error: "Receptionist not found" });
+        res.status(200).json(receptionist);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
