@@ -65,7 +65,6 @@ export const createPrescription = async (req, res) => {
     }
 };
 
-// AI Assistance: Generate explanation or diagnosis suggestions
 export const getAiAssistance = async (req, res) => {
     try {
         const { diagnosis, medications, query, subjective, objective } = req.body;
@@ -103,6 +102,7 @@ export const getAiAssistance = async (req, res) => {
 
         res.status(200).json({ explanation });
     } catch (error) {
+        console.error("AI Error:", error);
         res.status(500).json({ error: "Failed to generate AI assistance" });
     }
 };

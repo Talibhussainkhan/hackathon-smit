@@ -28,22 +28,6 @@ app.use(express.json({ limit: '50mb' }));
 app.use(cookieParser());
 
 
-app.post('/', async (req, res) => {
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-  try {
-    const { prompt } = req.body;
-
-    const result = await model.generateContent(prompt);
-    res.json({
-      reply: result.response.text(),
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-
-  }
-})
-
 app.use('/api/auth', authRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/receptionist', receptionistRouter);
